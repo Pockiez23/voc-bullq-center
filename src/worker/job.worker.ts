@@ -50,4 +50,3 @@ worker.on("failed", (job, err) => {
   console.error(`❌ Failed job ${job?.id}`, err);
 });
 
-console.log("🚀 Worker is running...");
