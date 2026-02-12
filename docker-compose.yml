@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: voc_postgres
+    environment:
+      POSTGRES_USER: voc
+      POSTGRES_PASSWORD: vocpass
+      POSTGRES_DB: voc_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: voc_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
