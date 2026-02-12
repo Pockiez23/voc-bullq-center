@@ -13,7 +13,7 @@ const worker = new Worker(
 
     try {
       // จำลองทำงาน
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 15000));
 
       await prisma.job.update({
         where: { id: jobId },
