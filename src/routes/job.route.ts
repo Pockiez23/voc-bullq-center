@@ -31,7 +31,7 @@ export const jobRoute = new Elysia({ prefix: "/jobs" })
     });
 
     await jobQueue.add("process-job", {
-      jobId: id,
+      id: id,
     });
 
     return { message: "Job added to queue" };

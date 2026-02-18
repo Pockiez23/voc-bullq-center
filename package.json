@@ -2,13 +2,14 @@
   "name": "voc-bullq-center",
   "version": "1.0.50",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run src/server.ts",
-    "worker": "bun run src/worker.ts"
+    "dev": "bun run src/index.ts center",
+    "center": "bun run src/index.ts center",
+    "worker": "bun run src/index.ts worker",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push"
   },
   "dependencies": {
     "@prisma/client": "6",
-    "bull": "^4.15.1",
     "bullmq": "^5.68.0",
     "elysia": "^1.4.25",
     "ioredis": "^5.9.2",
@@ -17,6 +18,5 @@
   },
   "devDependencies": {
     "bun-types": "latest"
-  },
-  "module": "src/index.js"
+  }
 }
