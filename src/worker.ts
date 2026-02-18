@@ -3,7 +3,7 @@ import { connection } from "./queue/job.queue";
 import { prisma } from "./lib/prisma";
 import { JobStatus } from "@prisma/client";
 
-const WEBHOOK_URL = "https://webhook.site/f74f2b6c-3a40-494e-b3cf-7a6647c225d0"; 
+const WEBHOOK_URL = "https://webhook.site/f4303190-5549-41e1-8222-548094644681"; 
 
 let processingJobId: number | null = null;
 
@@ -27,6 +27,12 @@ export const startWorker = () => {
       if (!existingJob) {
         console.warn(`👻 [WORKER] Job ID ${jobId} not found in DB (Stale job). Skipping...`);
         return; // จบฟังก์ชันเลย (ถือว่างานเสร็จแล้ว ให้ BullMQ ลบออกจากคิวไป)
+      }
+
+      //เช็คสถานะ: ถ้าทำเสร็จแล้ว หรือ พังไปแล้ว ให้ข้ามเลย!
+      if (existingJob.status === JobStatus.COMPLETED || existingJob.status === JobStatus.FAILED) {
+        console.log(`⏭️ [WORKER] Job ${jobId} is already ${existingJob.status}. Skipping duplicate...`);
+        return; 
       }
 
       // เริ่มงานจริง
