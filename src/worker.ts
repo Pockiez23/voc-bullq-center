@@ -3,36 +3,41 @@ import { connection } from "./queue/job.queue";
 import { prisma } from "./lib/prisma";
 import { JobStatus } from "@prisma/client";
 
+// ⚠️ อย่าลืมแก้ URL ให้ตรงกับปัจจุบันของ Webhook.site ของคุณนะครับ
 const WEBHOOK_URL = "https://webhook.site/f4303190-5549-41e1-8222-548094644681"; 
 
+// ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: number | null = null;
 
-
 export const startWorker = () => {
-  console.log("👷 Worker Service Started. Waiting for jobs...");
+  console.log("👷 Worker Service Started (SOAP Mode). Waiting for jobs...");
 
   const worker = new Worker(
     "job-queue",
     async (job) => {
+      // 1. แปลง ID ให้ชัวร์ (รองรับทั้ง id และ jobId กันพลาด)
       const rawId = job.data.id || job.data.jobId;
       const jobId = Number(rawId);
 
-      if (!jobId || isNaN(jobId)) return;
+      if (!jobId || isNaN(jobId)) {
+        console.error(`❌ [WORKER] Invalid Job ID: ${rawId}`);
+        return;
+      }
 
-      // เช็คก่อนเลยว่า งานนี้ยังมีใน DB ไหม? 
+      // 2. เช็คงานใน DB ว่ามีอยู่จริงไหม (กันงานผี Ghost Job)
       const existingJob = await prisma.job.findUnique({
         where: { id: jobId }
       });
 
       if (!existingJob) {
-        console.warn(`👻 [WORKER] Job ID ${jobId} not found in DB (Stale job). Skipping...`);
-        return; // จบฟังก์ชันเลย (ถือว่างานเสร็จแล้ว ให้ BullMQ ลบออกจากคิวไป)
+        console.warn(`👻 [WORKER] Job ID ${jobId} not found in DB. Skipping...`);
+        return;
       }
 
-      //เช็คสถานะ: ถ้าทำเสร็จแล้ว หรือ พังไปแล้ว ให้ข้ามเลย!
+      // 3. เช็คสถานะ (กันทำซ้ำ Duplicate)
       if (existingJob.status === JobStatus.COMPLETED || existingJob.status === JobStatus.FAILED) {
         console.log(`⏭️ [WORKER] Job ${jobId} is already ${existingJob.status}. Skipping duplicate...`);
-        return; 
+        return;
       }
 
       // เริ่มงานจริง
@@ -40,77 +45,93 @@ export const startWorker = () => {
       console.log(`📥 [WORKER] Received Job ID: ${jobId} (Processing...)`);
 
       try {
+        // หน่วงเวลาจำลองการทำงาน (ปรับเลขได้ตามใจชอบครับ หน่วยเป็น ms)
         console.log(`⏳ [WORKER] Job ${jobId} is working...`);
+        await new Promise((resolve) => setTimeout(resolve, 3000)); 
+
+        // ✅ 4. สร้าง XML Body (SOAP Envelope)
+        const xmlBody = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <ProcessJobRequest xmlns="http://tempuri.org/">
+      <JobId>${jobId}</JobId>
+      <Name>${job.data.name || 'Unknown'}</Name>
+      <Timestamp>${new Date().toISOString()}</Timestamp>
+      <Status>Processed</Status>
+    </ProcessJobRequest>
+  </soap:Body>
+</soap:Envelope>`;
+
+        // ✅ 5. ยิงแบบ SOAP (เปลี่ยน Content-Type เป็น text/xml)
+        console.log(`🚀 [WORKER] Sending SOAP Request to ${WEBHOOK_URL}`);
         
-        await new Promise((resolve) => setTimeout(resolve, 30000));
-
-        // ยิง Webhook
-        const body = {
-          id: jobId,
-          name: job.data.name,
-          timestamp: new Date().toISOString(),
-          extra: job.data.payload
-        };
-
         const response = await fetch(WEBHOOK_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
+            headers: { 
+              "Content-Type": "text/xml; charset=utf-8",
+            },
+            body: xmlBody
         });
 
-        // จบงาน Update DB
-        // (ถึงตรงนี้มั่นใจได้ว่า update ผ่านแน่นอน เพราะเราเช็ค existingJob มาแล้ว)
+        if (!response.ok) {
+            throw new Error(`SOAP request failed with status ${response.status}`);
+        }
+
+        // จบงาน Update DB เป็น COMPLETED
         await prisma.job.update({
           where: { id: jobId },
-          data: { 
-            status: response.ok ? JobStatus.COMPLETED : JobStatus.FAILED, 
-            is_run: false 
-          }
+          data: { status: JobStatus.COMPLETED, is_run: false }
         });
-
-        console.log(`✅ [WORKER] Job ${jobId} Completed`);
+        console.log(`✅ [WORKER] Job ${jobId} Completed (SOAP Sent)`);
 
       } catch (error) {
         console.error(`❌ [WORKER] Job ${jobId} Failed:`, error);
         
-        // ต้อง try-catch ตรงนี้ซ้อนอีกที กัน error กรณี DB หายระหว่างทาง
+        // Update DB เป็น FAILED (ใส่ try-catch กันเหนียวเผื่อ DB หลุด)
         try {
             await prisma.job.update({
                 where: { id: jobId }, 
                 data: { status: JobStatus.FAILED, is_run: false }
             });
         } catch (dbError) {
-            console.error("⚠️ Failed to update error status to DB (Record might be gone)");
+             console.error("⚠️ Failed to update error status to DB");
         }
         
         throw error;
       } finally {
+        // ล้างค่า ID เมื่อจบงาน (เพื่อให้รู้ว่าตอนนี้ว่างแล้ว)
         processingJobId = null;
       }
     },
-    { connection, concurrency: 1 }
+    { 
+      connection, 
+      concurrency: 1 
+    }
   );
 
-  // ... (ส่วน Graceful Shutdown เหมือนเดิม) ...
+  worker.on('failed', (job, err) => {
+    console.error(`Job ${job?.id} failed globally with error ${err.message}`);
+  });
+
+  // Graceful Shutdown: ดักจับการกด Ctrl+C
   const gracefulShutdown = async () => {
     if (processingJobId) {
-        try {
-            // เช็คก่อน update กันเหนียว
-            const exists = await prisma.job.findUnique({ where: { id: processingJobId }});
-            if (exists) {
-                console.log(`\n⚠️ Worker stopping! Resetting Job ${processingJobId}...`);
-                await prisma.job.update({
-                    where: { id: processingJobId },
-                    data: { status: JobStatus.PENDING, is_run: false }
-                });
-            }
-        } catch (err) {
-            console.error("❌ Failed to reset job status");
-        }
+      console.log(`\n⚠️ Worker stopping! Resetting Job ${processingJobId} back to PENDING...`);
+      try {
+        // รีเซ็ตงานที่ค้างมือกลับเป็น PENDING
+        await prisma.job.update({
+          where: { id: processingJobId },
+          data: { status: JobStatus.PENDING, is_run: false }
+        });
+        console.log("✅ Reset complete.");
+      } catch (err) {
+        console.error("❌ Failed to reset job status:", err);
+      }
     }
+    console.log("👋 Bye!");
     process.exit(0);
   };
-  
+
   process.on('SIGINT', gracefulShutdown);
   process.on('SIGTERM', gracefulShutdown);
 };
