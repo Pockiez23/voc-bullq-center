@@ -7,7 +7,7 @@ export const startCron = () => {
   console.log("⏰ Cronjob Service Started...");
 
   // ✅ Task 1: ระบบ "รอให้เสร็จก่อนค่อยจ่ายงานใหม่"
-  // เช็คทุกๆ 5 วินาที (เพื่อให้งานต่อเนื่องไวขึ้นเมื่อ Worker ว่าง)
+  // Center (Job Dispatcher): ตรวจสอบทุกๆ 30 วินาที หรือ 1 นาที
   cron.schedule("*/30 * * * * *", async () => {
     try {
       //เช็คก่อนว่ามีงานที่กำลังวิ่งอยู่ไหม (RUNNING)
@@ -52,15 +52,15 @@ export const startCron = () => {
   });
 
   // Task 2: ระบบกู้ชีพ (Rescue Stuck Jobs)
-  // เหมือนเดิม: ถ้า RUNNING ค้างนานเกิน 1 นาที ให้รีเซ็ตกลับมาทำใหม่
-  cron.schedule("*/30 * * * * *", async () => {
+  // Center (Rescue): ตรวจสอบงานที่ค้างเกิน 10 นาที
+  cron.schedule("0 * * * * *", async () => {
     // console.log("♻️ Checking for stuck jobs...");
-    const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000);
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
     const stuckJobs = await prisma.job.findMany({
       where: {
         status: JobStatus.RUNNING,
-        updatedAt: { lt: oneMinuteAgo }
+        updatedAt: { lt: tenMinutesAgo }
       }
     });
 

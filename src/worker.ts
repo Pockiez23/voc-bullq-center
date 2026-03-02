@@ -8,6 +8,7 @@ const WEBHOOK_URL = "https://webhook.site/f4303190-5549-41e1-8222-548094644681";
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: number | null = null;
+const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): ทำงาน 5 นาที / 1 งาน
 
 export const startWorker = () => {
   console.log("👷 Worker Service Started (SOAP Mode). Waiting for jobs...");
@@ -15,6 +16,7 @@ export const startWorker = () => {
   const worker = new Worker(
     "job-queue",
     async (job) => {
+      const jobStartedAt = Date.now();
       // 1. แปลง ID ให้ชัวร์ (รองรับทั้ง id และ jobId กันพลาด)
       const rawId = job.data.id || job.data.jobId;
       const jobId = Number(rawId);
@@ -77,6 +79,16 @@ export const startWorker = () => {
             throw new Error(`SOAP request failed with status ${response.status}`);
         }
 
+        const remainingMs = MIN_JOB_DURATION_MS - (Date.now() - jobStartedAt);
+        if (remainingMs > 0) {
+          console.log(
+            `🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(
+              remainingMs / 1000
+            )}s before completing Job ${jobId}...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
+
         // จบงาน Update DB เป็น COMPLETED
         await prisma.job.update({
           where: { id: jobId },
@@ -89,6 +101,16 @@ export const startWorker = () => {
         
         // Update DB เป็น FAILED (ใส่ try-catch กันเหนียวเผื่อ DB หลุด)
         try {
+            const remainingMs = MIN_JOB_DURATION_MS - (Date.now() - jobStartedAt);
+            if (remainingMs > 0) {
+              console.log(
+                `🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(
+                  remainingMs / 1000
+                )}s before failing Job ${jobId}...`
+              );
+              await new Promise((resolve) => setTimeout(resolve, remainingMs));
+            }
+
             await prisma.job.update({
                 where: { id: jobId }, 
                 data: { status: JobStatus.FAILED, is_run: false }
