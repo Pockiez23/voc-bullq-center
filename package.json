@@ -5,6 +5,7 @@
     "dev": "bun run src/index.ts center",
     "center": "bun run src/index.ts center",
     "worker": "bun run src/index.ts worker",
+    "test": "bun test",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
   },

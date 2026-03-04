@@ -4,7 +4,7 @@ import { prisma } from "./lib/prisma";
 import { JobStatus } from "@prisma/client";
 
 // ⚠️ อย่าลืมแก้ URL ให้ตรงกับปัจจุบันของ Webhook.site ของคุณนะครับ
-const WEBHOOK_URL = "https://webhook.site/f4303190-5549-41e1-8222-548094644681"; 
+const WEBHOOK_URL = "https://webhook.site/b45899da-8252-47ff-bb0a-b2f65ff66e85"; 
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: number | null = null;
