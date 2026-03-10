@@ -1,85 +1,78 @@
 import cron from "node-cron";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { jobQueue } from "../queue/job.queue";
-import { JobStatus } from "@prisma/client";
+import { vocQueue } from "../queue/voc.queue";
+
+const VOC_1129_STATUS = {
+  ERROR: "ERROR",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETE: "COMPLETE",
+} as const;
+
+export type Voc1129Status =
+  (typeof VOC_1129_STATUS)[keyof typeof VOC_1129_STATUS];
 
 export const startCron = () => {
   console.log("⏰ Cronjob Service Started...");
+  const voc1129IntervalMinutes = Number(
+    process.env.VOC_1129_CRON_INTERVAL_MINUTES ?? "30"
+  );
+  const voc1129CronExpr = `*/${voc1129IntervalMinutes} * * * *`;
+  console.log(
+    `⏰ VOC 1129 Cron interval: every ${voc1129IntervalMinutes} minute(s) (${voc1129CronExpr})`
+  );
 
-  // ✅ Task 1: ระบบ "รอให้เสร็จก่อนค่อยจ่ายงานใหม่"
-  // Center (Job Dispatcher): ตรวจสอบทุกๆ 30 วินาที หรือ 1 นาที
-  cron.schedule("*/30 * * * * *", async () => {
+  // Task: VOC 1129 dispatcher
+  // - เฉพาะ voc_no ขึ้นต้นด้วย C
+  // - เลือกเคสที่ยังไม่เคยส่ง หรือ updated หลังจาก run ล่าสุด
+  // - รวมถึงสถานะ ERROR, IN_PROGRESS ให้วนส่งใหม่
+  cron.schedule(voc1129CronExpr, async () => {
     try {
-      //เช็คก่อนว่ามีงานที่กำลังวิ่งอยู่ไหม (RUNNING)
-      const runningCount = await prisma.job.count({
-        where: { status: JobStatus.RUNNING }
-      });
+      const now = new Date();
 
-      // ถ้ามีงานวิ่งอยู่ (แม้แต่งานเดียว) ให้หยุด ไม่ต้องส่งเพิ่ม
-      if (runningCount > 0) {
-        // console.log(`[CENTER] ⏳ Worker is busy (${runningCount} running). Waiting...`);
-        return; 
+      type VocToQueue = {
+        id: string;
+        voc_no: string;
+      };
+
+      const candidates = await prisma.$queryRaw<VocToQueue[]>(Prisma.sql`
+        SELECT id, voc_no
+        FROM public.voc_master
+        WHERE voc_no LIKE 'C%'
+          AND (
+            cronjob_1129_last_run_date IS NULL
+            OR cronjob_1129_last_run_date < updated_at
+            OR cronjob_1129_last_run_status IN (${Prisma.join([
+              VOC_1129_STATUS.ERROR,
+              VOC_1129_STATUS.IN_PROGRESS,
+            ])})
+          );
+      `);
+
+      if (candidates.length === 0) {
+        return;
       }
 
-      //ถ้า Worker ว่าง (runningCount === 0) ให้หยิบงานใหม่มา "ทีละ 1 งาน"
-      const jobs = await prisma.job.findMany({
-        where: { status: JobStatus.PENDING },
-        take: 1, // เอามาแค่ 1 เดียวเท่านั้น
-        orderBy: { id: 'asc' }
-      });
+      console.log(
+        `[VOC-1129] Found ${candidates.length} record(s) to enqueue (C*).`
+      );
 
-      if (jobs.length > 0) {
-        const job = jobs[0]; // หยิบงานแรก
-        console.log(`[CENTER] ✅ Worker is free. Pushing Job ID ${job.id} to Redis`);
-
-        await jobQueue.add("process-job", {
-          id: job.id,
-          name: job.name,
-          payload: {}
+      for (const row of candidates) {
+        await vocQueue.add("voc-1129-send", {
+          vocMasterId: row.id,
+          vocNo: row.voc_no,
         });
 
-        // Update เป็น RUNNING เพื่อบล็อกไม่ให้ Cron รอบหน้าส่งงานซ้อน
-        await prisma.job.update({
-          where: { id: job.id },
-          data: { status: JobStatus.RUNNING, is_run: true },
+        await prisma.voc_master.update({
+          where: { id: row.id },
+          data: {
+            cronjob_1129_last_run_status: VOC_1129_STATUS.IN_PROGRESS,
+            cronjob_1129_last_run_date: now,
+          },
         });
-      } 
-      // else { console.log("[CENTER] No pending jobs."); }
-
+      }
     } catch (error) {
-      console.error("[CENTER] Error processing job:", error);
-    }
-  });
-
-  // Task 2: ระบบกู้ชีพ (Rescue Stuck Jobs)
-  // Center (Rescue): ตรวจสอบงานที่ค้างเกิน 10 นาที
-  cron.schedule("0 * * * * *", async () => {
-    // console.log("♻️ Checking for stuck jobs...");
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-
-    const stuckJobs = await prisma.job.findMany({
-      where: {
-        status: JobStatus.RUNNING,
-        updatedAt: { lt: tenMinutesAgo }
-      }
-    });
-
-    if (stuckJobs.length > 0) {
-       console.log(`[CENTER] 🚨 Found ${stuckJobs.length} stuck jobs (Worker might be dead). Re-queueing...`);
-       for (const job of stuckJobs) {
-          // โยนเข้า Queue ใหม่
-          await jobQueue.add("process-job", {
-            id: job.id,
-            name: job.name,
-            retry: true
-          });
-          
-          // อัปเดตเวลา เพื่อให้ Cron Task 1 เห็นว่าเป็น RUNNING ต่อไป (แต่ Worker จะได้รับ msg ใหม่)
-          await prisma.job.update({
-            where: { id: job.id },
-            data: { updatedAt: new Date() }
-          });
-       }
+      console.error("[VOC-1129] Error in dispatcher cron:", error);
     }
   });
 };

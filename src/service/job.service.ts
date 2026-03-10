@@ -5,7 +5,7 @@ export const createJob = async (name: string) => {
   const job = await prisma.job.create({
     data: {
       name,
-      status: "PENDING",
+      status: "IN_PROGRESS",
     },
   });
 
@@ -30,7 +30,7 @@ export const startJob = async (id: number) => {
     throw new Error("Job not found");
   }
 
-  if (job.status !== "PENDING") {
+  if (job.status !== "IN_PROGRESS") {
     throw new Error("Job already started or completed");
   }
 
@@ -46,7 +46,7 @@ export const startJob = async (id: number) => {
   await prisma.job.update({
     where: { id },
     data: {
-      status: "RUNNING",
+      status: "IN_PROGRESS",
     },
   });
 

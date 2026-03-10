@@ -4,21 +4,989 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "postgresql://voc:vocpass@localhost:5432/voc_db"
 }
 
-model Job {
-  id        Int       @id @default(autoincrement())
-  name      String
-  status    JobStatus @default(PENDING)
-  is_run    Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+model cancel_reasons {
+  id         String   @id @db.Uuid
+  code       String   @unique
+  name       String
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
 }
 
-enum JobStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
+model contact_failure_reasons {
+  id           String         @id @db.Uuid
+  code         String         @unique
+  name         String
+  sort_order   Int            @default(0)
+  is_active    Boolean        @default(true)
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @default(now())
+  voc_contacts voc_contacts[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model corrective_action_plans {
+  id         String   @id @db.Uuid
+  code       String   @db.VarChar(10)
+  name       String
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+}
+
+model customer_size_type {
+  id            String          @id @db.Uuid
+  code          String          @unique
+  name          String
+  sort_order    Int             @default(0)
+  is_active     Boolean         @default(true)
+  is_reportable Boolean         @default(true)
+  is_selectable Boolean         @default(true)
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @default(now())
+  customer_type customer_type[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([is_reportable])
+  @@index([is_selectable])
+  @@index([sort_order])
+}
+
+model customer_type {
+  id                    String             @id @db.Uuid
+  code                  String             @unique
+  name                  String
+  customer_size_type_id String             @db.Uuid
+  sort_order            Int                @default(0)
+  is_active             Boolean            @default(true)
+  is_selectable         Boolean            @default(true)
+  is_reportable         Boolean            @default(true)
+  created_at            DateTime           @default(now())
+  updated_at            DateTime           @default(now())
+  customer_size_type    customer_size_type @relation(fields: [customer_size_type_id], references: [id])
+
+  @@index([code])
+  @@index([customer_size_type_id])
+  @@index([is_active])
+  @@index([is_reportable])
+  @@index([is_selectable])
+  @@index([sort_order])
+}
+
+model dept_classification_rule {
+  rule_id   Int      @id @default(autoincrement())
+  rule_code String   @unique
+  rule_type String
+  values    String[]
+}
+
+model districts {
+  id            String          @id @db.Uuid
+  code          String          @unique
+  name_th       String
+  name_en       String?
+  province_code String
+  created_at    DateTime        @default(now())
+  is_active     Boolean         @default(true)
+  updated_at    DateTime        @default(now())
+  sub_districts sub_districts[]
+
+  @@index([name_th])
+  @@index([province_code])
+}
+
+model event_detail_options {
+  id          String   @id @db.Uuid
+  key         String   @unique @db.VarChar(100)
+  description String   @db.VarChar(255)
+  is_active   Boolean  @default(true)
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @default(now())
+
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model holiday {
+  id         String   @id @db.Uuid
+  name       String
+  date       DateTime @db.Date
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([date])
+  @@index([date, is_active])
+  @@index([is_active])
+}
+
+model incident_frequency {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique
+  name       String
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model manual {
+  id            String   @id @db.Uuid
+  code          String   @unique
+  name          String
+  sort_order    Int      @default(0)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+  bucket_name   String?
+  file_name     String?
+  file_path     String?
+  file_size     Int?
+  mime_type     String?
+  original_name String?
+  uploaded_by   String?
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model menu_permissions {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique @db.VarChar(100)
+  parent_key String?  @db.VarChar(100)
+  name       String   @db.VarChar(255)
+  is_parent  Boolean  @default(false)
+  created_at DateTime @default(now()) @db.Timestamptz(3)
+  updated_at DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model pea_office {
+  name             String         @db.VarChar(500)
+  subdistrict_code String?        @db.VarChar(10)
+  postal_code      String?        @db.VarChar(10)
+  created_at       DateTime       @default(now())
+  pea_office       String?        @db.VarChar(100)
+  updated_at       DateTime       @default(now())
+  id               String         @id @db.Uuid
+  region_group     String?        @db.VarChar(100)
+  sub_districts    sub_districts? @relation(fields: [subdistrict_code], references: [code])
+
+  @@unique([pea_office, subdistrict_code])
+  @@index([name])
+  @@index([postal_code])
+  @@index([region_group])
+  @@index([subdistrict_code])
+}
+
+model permissions {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique @db.VarChar(100)
+  name        String   @db.VarChar(255)
+  category    String?  @db.VarChar(100)
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz(3)
+  updated_at  DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model policy_forwarding {
+  policy_id       Int      @id @default(autoincrement())
+  dept_rule_id    Int
+  request_type_id String?  @db.Uuid
+  topic_id        String?  @db.Uuid
+  is_allowed      Boolean
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model policy_visibility {
+  policy_id       Int     @id @default(autoincrement())
+  request_type_id String  @db.Uuid
+  topic_id        String? @db.Uuid
+  scope_type      String  @db.VarChar(20)
+  is_allowed      Boolean
+  is_exclusive    Boolean @default(false)
+  dept_rule_id    Int
+}
+
+model provinces {
+  id         String   @id @db.Uuid
+  code       String   @unique
+  name_th    String
+  name_en    String?
+  region     String?
+  created_at DateTime @default(now())
+  is_active  Boolean  @default(true)
+  updated_at DateTime @default(now())
+
+  @@index([code])
+  @@index([name_th])
+  @@index([region])
+}
+
+model request_acceptance_sms_history {
+  id            String    @id @db.Uuid
+  voc_master_id String    @db.Uuid
+  phone_number  String    @db.VarChar(20)
+  message       String
+  status        String    @db.VarChar(20)
+  sent_at       DateTime?
+  error_message String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @default(now())
+}
+
+model roles {
+  id               String       @id @db.Uuid
+  name             String       @unique
+  description      String?
+  permissions      String       @default("[]")
+  is_active        Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @default(now())
+  created_by       String?
+  updated_by       String?
+  menu_permissions String       @default("[]")
+  user_roles       user_roles[]
+
+  @@index([created_at])
+  @@index([is_active])
+  @@index([name])
+}
+
+model root_cause_reasons {
+  id         String   @id @db.Uuid
+  code       String   @unique
+  name       String
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model sub_districts {
+  id            String       @id @db.Uuid
+  code          String       @unique
+  name_th       String
+  name_en       String?
+  district_code String
+  postal_code   String?
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @default(now())
+  pea_office    pea_office[]
+  districts     districts    @relation(fields: [district_code], references: [code])
+
+  @@index([code])
+  @@index([district_code])
+  @@index([postal_code])
+}
+
+model supply_area {
+  id         String   @id @db.Uuid
+  code       String   @unique
+  name       String
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model sync_log {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sync_type         String
+  status            String
+  started_at        DateTime  @default(now())
+  completed_at      DateTime?
+  records_processed Int?
+  records_success   Int?
+  records_failed    Int?
+  error_message     String?
+  created_at        DateTime  @default(now())
+
+  @@index([created_at])
+  @@index([started_at])
+  @@index([status])
+  @@index([sync_type])
+}
+
+model title_prefix {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique @db.VarChar(10)
+  name       String   @db.VarChar(100)
+  sort_order Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model user_depts {
+  user_id     String   @db.Uuid
+  dept_sap    String
+  assigned_at DateTime @default(now())
+  assigned_by String?  @db.Uuid
+
+  @@id([user_id, dept_sap])
+}
+
+model user_roles {
+  user_id     String   @db.Uuid
+  role_id     String   @db.Uuid
+  assigned_at DateTime @default(now()) @db.Timestamptz(3)
+  assigned_by String?  @db.Uuid
+  roles       roles    @relation(fields: [role_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_roles_role")
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_roles_user")
+
+  @@id([user_id, role_id])
+  @@index([user_id], map: "idx_user_roles_user_id")
+}
+
+model users {
+  id                 String       @id @db.Uuid
+  name               String
+  email              String       @unique
+  created_at         DateTime     @default(now())
+  updated_at         DateTime     @default(now())
+  updated_by_user_id String?      @db.Uuid
+  is_active          Boolean      @default(true)
+  keycloak_id        String       @unique
+  emp_id             String?
+  telephone          String?      @db.VarChar
+  user_roles         user_roles[]
+
+  @@index([email])
+  @@index([is_active])
+  @@index([updated_by_user_id])
+}
+
+model vms_mas_department {
+  dept_sap         String   @id
+  dept_change_code String?
+  dept_upper       String?
+  dept_short1      String?
+  dept_short2      String?
+  dept_short3      String?
+  dept_short4      String?
+  dept_short5      String?
+  dept_short6      String?
+  dept_short7      String?
+  dept_short       String?
+  dept_full1       String?
+  dept_full2       String?
+  dept_full3       String?
+  dept_full4       String?
+  dept_full5       String?
+  dept_full6       String?
+  dept_full7       String?
+  dept_full        String?
+  cost_center_code String?
+  cost_center_name String?
+  pea_code         String?
+  business_place   String?
+  business_area    String?
+  resource_code    String?
+  resource_name    String?
+  tax_branch       String?
+  is_active        String?  @default("1")
+  created_at       DateTime @default(now())
+  created_by       String?
+  updated_at       DateTime @default(now())
+  updated_by       String?
+  is_deleted       String?  @default("0")
+  dept_long_short  String?
+
+  @@index([business_area])
+  @@index([cost_center_code])
+  @@index([dept_upper])
+  @@index([pea_code])
+}
+
+model voc_causes {
+  id             String         @id @db.Uuid
+  sub_issue_id   String         @db.Uuid
+  code           String         @unique
+  name           String
+  description    String?
+  is_active      Boolean        @default(true)
+  sort_order     Int            @default(0)
+  created_at     DateTime       @default(now())
+  updated_at     DateTime       @default(now())
+  voc_sub_issues voc_sub_issues @relation(fields: [sub_issue_id], references: [id])
+  voc_types      voc_types[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+  @@index([sub_issue_id])
+}
+
+model voc_cc_mapping {
+  cc_code         String    @id @db.VarChar(20)
+  request_type_id String?   @db.Uuid
+  topic_id        String?   @db.Uuid
+  issue_id        String?   @db.Uuid
+  sub_issue_id    String?   @db.Uuid
+  created_at      DateTime? @default(dbgenerated("LOCALTIMESTAMP")) @db.Timestamp(6)
+  updated_at      DateTime? @default(dbgenerated("LOCALTIMESTAMP")) @db.Timestamp(6)
+}
+
+model voc_channel_mechanism {
+  id             String       @id @db.Uuid
+  code           String       @unique
+  name           String
+  voc_channel_id String       @db.Uuid
+  sort_order     Int          @default(0)
+  is_active      Boolean      @default(true)
+  is_selectable  Boolean      @default(true)
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @default(now())
+  voc_channels   voc_channels @relation(fields: [voc_channel_id], references: [id])
+
+  @@index([code])
+  @@index([is_active])
+  @@index([is_selectable])
+  @@index([sort_order])
+  @@index([voc_channel_id])
+}
+
+model voc_channels {
+  id                    String                  @id @db.Uuid
+  code                  String                  @unique
+  name                  String
+  description           String?
+  is_active             Boolean                 @default(true)
+  sort_order            Int                     @default(0)
+  created_at            DateTime                @default(now())
+  updated_at            DateTime                @default(now())
+  voc_channel_mechanism voc_channel_mechanism[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model voc_contacts {
+  id                      String                   @id @db.Uuid
+  voc_master_id           String                   @db.Uuid
+  contact_date            String
+  contact_person          String                   @db.VarChar(255)
+  contact_result          Boolean
+  created_at              DateTime                 @default(now())
+  updated_at              DateTime                 @default(now())
+  contact_failure_reason  String?                  @db.Uuid
+  contact_time            String                   @db.VarChar(5)
+  created_by              String?
+  deleted_at              DateTime?
+  is_deleted              Boolean?                 @default(false)
+  notes                   String?
+  updated_by              String?
+  contact_failure_reasons contact_failure_reasons? @relation(fields: [contact_failure_reason], references: [id])
+  voc_master              voc_master               @relation(fields: [voc_master_id], references: [id], onDelete: Cascade)
+
+  @@index([contact_date])
+  @@index([contact_result])
+  @@index([voc_master_id])
+}
+
+model voc_detail {
+  id                        String    @id(map: "voc_detail_pkey2") @db.Uuid
+  voc_master_id             String    @db.Uuid
+  first_name                String?   @db.VarChar(100)
+  last_name                 String?   @db.VarChar(100)
+  citizen_id                String?   @db.VarChar(13)
+  phone                     String?   @db.VarChar(20)
+  email                     String?   @db.VarChar(100)
+  user_number               String?   @db.VarChar(50)
+  meter_number              String?   @db.VarChar(50)
+  contact_house_no          String?   @db.VarChar(50)
+  contact_moo               String?   @db.VarChar(50)
+  contact_village           String?   @db.VarChar(150)
+  contact_road              String?   @db.VarChar(150)
+  contact_soi               String?   @db.VarChar(150)
+  contact_postal            String    @db.VarChar(10)
+  incident_house_no         String?   @db.VarChar(50)
+  incident_moo              String?   @db.VarChar(50)
+  incident_village          String?   @db.VarChar(150)
+  incident_road             String?   @db.VarChar(150)
+  incident_soi              String?   @db.VarChar(150)
+  incident_postal           String?   @db.VarChar(5)
+  details                   String?
+  accept_terms              Boolean?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @default(now())
+  product_importance_input  String?   @db.VarChar(500)
+  product_importance_result String?   @db.VarChar(200)
+  contact_province          String?   @db.Uuid
+  contact_district          String?   @db.Uuid
+  contact_subdistrict       String?   @db.Uuid
+  request_pea               String?   @db.VarChar(10)
+  frequency                 String?   @db.Uuid
+  event_description         String?   @db.Uuid
+  incident_province         String?   @db.Uuid
+  incident_district         String?   @db.Uuid
+  incident_subdistrict      String?   @db.Uuid
+  topic                     String?   @db.Uuid
+  customer_group            String?   @db.Uuid
+  customer_group_type       String?   @db.Uuid
+  main_channel              String?   @db.Uuid
+  sub_channel               String?   @db.Uuid
+  prefix                    String?   @db.Uuid
+  severity_level            Int?      @db.SmallInt
+  dept_sap                  String?   @db.VarChar(50)
+  sub_issue                 String?   @db.Uuid
+  accept_date               DateTime?
+  accept_by                 String?   @db.Uuid
+  cc_code                   String?   @db.VarChar(20)
+  ocpv_code_ref             String?   @db.VarChar(50)
+  opm_code_ref              String?   @db.VarChar(50)
+  completed_date            DateTime?
+  supply_area               String?   @db.Uuid
+
+  @@index([contact_district], map: "voc_detail_contact_district_idx2")
+  @@index([contact_province], map: "voc_detail_contact_province_idx2")
+  @@index([created_at], map: "voc_detail_created_at_idx2")
+  @@index([customer_group], map: "voc_detail_customer_group_idx2")
+  @@index([dept_sap], map: "voc_detail_dept_sap_idx2")
+  @@index([email], map: "voc_detail_email_idx2")
+  @@index([frequency], map: "voc_detail_frequency_idx2")
+  @@index([main_channel], map: "voc_detail_main_channel_idx2")
+  @@index([phone], map: "voc_detail_phone_idx2")
+  @@index([prefix], map: "voc_detail_prefix_idx2")
+  @@index([request_pea], map: "voc_detail_request_pea_idx2")
+  @@index([severity_level], map: "voc_detail_severity_level_idx2")
+  @@index([sub_issue], map: "voc_detail_sub_issue_idx2")
+  @@index([topic], map: "voc_detail_topic_idx2")
+  @@index([voc_master_id], map: "voc_detail_voc_master_id_idx2")
+}
+
+model voc_files {
+  id            String    @id(map: "voc_files_pkey2") @db.Uuid
+  voc_master_id String    @db.Uuid
+  file_name     String
+  original_name String
+  file_size     Int
+  mime_type     String
+  file_path     String
+  bucket_name   String
+  uploaded_at   DateTime  @default(now())
+  uploaded_by   String
+  is_deleted    Boolean   @default(false)
+  deleted_at    DateTime?
+  file_type     String    @default("VOC_ATTACHMENT")
+
+  @@unique([bucket_name, file_path], map: "voc_files_bucket_name_file_path_idx1")
+  @@index([file_name], map: "voc_files_file_name_idx2")
+  @@index([is_deleted], map: "voc_files_is_deleted_idx2")
+  @@index([mime_type], map: "voc_files_mime_type_idx2")
+  @@index([uploaded_at], map: "voc_files_uploaded_at_idx2")
+  @@index([uploaded_by], map: "voc_files_uploaded_by_idx2")
+  @@index([voc_master_id], map: "voc_files_voc_master_id_idx2")
+}
+
+model voc_import_batches {
+  id              String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  file_name       String
+  original_name   String
+  file_path       String
+  file_size       Int          @default(0)
+  mime_type       String?
+  total_records   Int          @default(0)
+  success_records Int          @default(0)
+  failed_records  Int          @default(0)
+  status          String
+  error_log       String?
+  uploaded_by     String       @default("SYSTEM_IMPORT")
+  uploaded_at     DateTime     @default(now())
+  voc_master      voc_master[]
+}
+
+model voc_issues {
+  id                                                                           String                    @id @db.Uuid
+  topic_id                                                                     String                    @db.Uuid
+  code                                                                         String                    @unique
+  name                                                                         String
+  description                                                                  String?
+  is_active                                                                    Boolean                   @default(true)
+  sort_order                                                                   Int                       @default(0)
+  created_at                                                                   DateTime                  @default(now())
+  updated_at                                                                   DateTime                  @default(now())
+  voc_topics                                                                   voc_topics                @relation(fields: [topic_id], references: [id])
+  voc_sub_issues                                                               voc_sub_issues[]
+  voc_type_change_request_voc_type_change_request_current_issue_idTovoc_issues voc_type_change_request[] @relation("voc_type_change_request_current_issue_idTovoc_issues")
+  voc_type_change_request_voc_type_change_request_new_issue_idTovoc_issues     voc_type_change_request[] @relation("voc_type_change_request_new_issue_idTovoc_issues")
+  voc_types                                                                    voc_types[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+  @@index([topic_id])
+}
+
+model voc_mapping {
+  id                   Int       @id @default(autoincrement())
+  tag_id               Int?
+  level1_value         String?   @db.VarChar(255)
+  complaint_type_id    Int?
+  level2_value         String?   @db.VarChar(255)
+  complaint_subtype_id Int?
+  level3_value         String?   @db.VarChar(255)
+  request_type_name    String?   @db.VarChar(255)
+  request_type_id      String?   @db.Uuid
+  topic_name           String?   @db.VarChar(255)
+  topic_id             String?   @db.Uuid
+  issue_name           String?   @db.VarChar(255)
+  issue_id             String?   @db.Uuid
+  sub_issue_name       String?   @db.VarChar(255)
+  sub_issue_id         String?   @db.Uuid
+  cause_group          String?   @db.VarChar(255)
+  cause_detail         String?
+  cc_code              String?   @db.VarChar(20)
+  created_at           DateTime? @default(now()) @db.Timestamp(6)
+  updated_at           DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([issue_id])
+  @@index([request_type_id])
+  @@index([sub_issue_id])
+  @@index([topic_id])
+}
+
+model voc_mas_department {
+  dept_sap         String   @id
+  dept_change_code String?
+  dept_upper       String?
+  dept_short1      String?
+  dept_short2      String?
+  dept_short3      String?
+  dept_short4      String?
+  dept_short5      String?
+  dept_short6      String?
+  dept_short7      String?
+  dept_short       String?
+  dept_full1       String?
+  dept_full2       String?
+  dept_full3       String?
+  dept_full4       String?
+  dept_full5       String?
+  dept_full6       String?
+  dept_full7       String?
+  dept_full        String?
+  cost_center_code String?
+  cost_center_name String?
+  pea_code         String?
+  business_place   String?
+  business_area    String?
+  resource_code    String?
+  resource_name    String?
+  tax_branch       String?
+  is_active        String?  @default("1")
+  created_at       DateTime @default(now())
+  created_by       String?
+  updated_at       DateTime @default(now())
+  updated_by       String?
+  is_deleted       String?  @default("0")
+  dept_long_short  String?
+
+  @@index([business_area])
+  @@index([cost_center_code])
+  @@index([dept_upper])
+  @@index([pea_code])
+}
+
+model voc_master {
+  id                           String                    @id(map: "voc_master_pkey2") @db.Uuid
+  voc_no                       String                    @unique(map: "voc_master_voc_no_idx4") @db.VarChar(15)
+  voc_type                     String?                   @db.VarChar(50)
+  status                       String                    @db.VarChar(50)
+  created_at                   DateTime                  @default(now())
+  updated_at                   DateTime                  @default(now())
+  created_by                   String?                   @db.Uuid
+  updated_by                   String?                   @db.Uuid
+  is_deleted                   Boolean?                  @default(false)
+  deleted_at                   DateTime?
+  cancel_reason                String?
+  cancel_description           String?
+  cancel_date                  DateTime?
+  canceled_by                  String?                   @db.Uuid
+  forwarded_to_office_code     String?
+  main_voc_master_id           String?                   @db.Uuid
+  keycode                      String?                   @db.VarChar(6)
+  request_type                 String?                   @db.Uuid
+  topic                        String?                   @db.Uuid
+  issue                        String?                   @db.Uuid
+  sub_issue                    String?                   @db.Uuid
+  pending_issue_id             String?                   @db.Uuid
+  pending_request_type_id      String?                   @db.Uuid
+  pending_topic_id             String?                   @db.Uuid
+  pending_sub_issue_id         String?                   @db.Uuid
+  source_complaint_id          String?                   @db.Uuid
+  import_batch_id              String?                   @db.Uuid
+  cronjob_1129_last_run_date   DateTime?
+  /// Allowed values: ERROR | IN_PROGRESS | COMPLETE
+  cronjob_1129_last_run_status String?                   @db.VarChar(20)
+  voc_contacts                 voc_contacts[]
+  voc_import_batches           voc_import_batches?       @relation(fields: [import_batch_id], references: [id])
+  voc_type_change_request      voc_type_change_request[]
+
+  @@index([created_at], map: "voc_master_created_at_idx2")
+  @@index([created_by], map: "voc_master_created_by_idx2")
+  @@index([is_deleted], map: "voc_master_is_deleted_idx2")
+  @@index([main_voc_master_id], map: "voc_master_main_voc_master_id_idx2")
+  @@index([status], map: "voc_master_status_idx2")
+  @@index([voc_no], map: "voc_master_voc_no_idx3")
+  @@index([voc_type], map: "voc_master_voc_type_idx2")
+}
+
+model voc_number_sequence {
+  id            String   @id @db.Uuid
+  sequence_key  String   @unique @db.VarChar(50)
+  current_value Int      @default(0)
+  description   String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+
+  @@index([sequence_key])
+}
+
+model voc_request_types {
+  id                                                                                         String                    @id @db.Uuid
+  code                                                                                       String                    @unique
+  name                                                                                       String
+  description                                                                                String?
+  is_active                                                                                  Boolean                   @default(true)
+  sort_order                                                                                 Int                       @default(0)
+  created_at                                                                                 DateTime                  @default(now())
+  updated_at                                                                                 DateTime                  @default(now())
+  voc_sla_config                                                                             voc_sla_config[]
+  voc_topics                                                                                 voc_topics[]
+  voc_type_change_request_voc_type_change_request_current_request_type_idTovoc_request_types voc_type_change_request[] @relation("voc_type_change_request_current_request_type_idTovoc_request_types")
+  voc_type_change_request_voc_type_change_request_new_request_type_idTovoc_request_types     voc_type_change_request[] @relation("voc_type_change_request_new_request_type_idTovoc_request_types")
+  voc_types                                                                                  voc_types[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([sort_order])
+}
+
+model voc_sla_config {
+  id                String            @id @db.Uuid
+  code              String            @unique
+  request_type_id   String            @db.Uuid
+  topic_id          String            @db.Uuid
+  description       String?
+  working_days      Int?
+  contact_days      Int
+  wbs_working_days  Int?
+  is_active         Boolean           @default(true)
+  sort_order        Int               @default(0)
+  created_at        DateTime          @default(now())
+  updated_at        DateTime          @default(now())
+  voc_request_types voc_request_types @relation(fields: [request_type_id], references: [id])
+  voc_topics        voc_topics        @relation(fields: [topic_id], references: [id])
+
+  @@index([code])
+  @@index([is_active])
+  @@index([request_type_id])
+  @@index([sort_order])
+  @@index([topic_id])
+}
+
+model voc_status {
+  id               Int      @id @default(autoincrement())
+  status_th        String   @db.VarChar(255)
+  mapping_topic    String
+  status_en        String   @db.VarChar(100)
+  group_status     String?  @db.VarChar(100)
+  group_status_th  String?  @db.VarChar
+  is_cus_visible   Boolean?
+  cc_maping        String?  @db.VarChar(255)
+  smartplus_status String?  @db.VarChar(255)
+}
+
+model voc_sub_issues {
+  id                                                                                   String                    @id @db.Uuid
+  issue_id                                                                             String                    @db.Uuid
+  code                                                                                 String                    @unique
+  name                                                                                 String
+  description                                                                          String?
+  is_active                                                                            Boolean                   @default(true)
+  sort_order                                                                           Int                       @default(0)
+  created_at                                                                           DateTime                  @default(now())
+  updated_at                                                                           DateTime                  @default(now())
+  voc_causes                                                                           voc_causes[]
+  voc_issues                                                                           voc_issues                @relation(fields: [issue_id], references: [id])
+  voc_type_change_request_voc_type_change_request_current_sub_issue_idTovoc_sub_issues voc_type_change_request[] @relation("voc_type_change_request_current_sub_issue_idTovoc_sub_issues")
+  voc_type_change_request_voc_type_change_request_new_sub_issue_idTovoc_sub_issues     voc_type_change_request[] @relation("voc_type_change_request_new_sub_issue_idTovoc_sub_issues")
+  voc_types                                                                            voc_types[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([issue_id])
+  @@index([sort_order])
+}
+
+model voc_topics {
+  id                                                                           String                    @id @db.Uuid
+  request_type_id                                                              String                    @db.Uuid
+  code                                                                         String                    @unique
+  name                                                                         String
+  description                                                                  String?
+  is_active                                                                    Boolean                   @default(true)
+  sort_order                                                                   Int                       @default(0)
+  created_at                                                                   DateTime                  @default(now())
+  updated_at                                                                   DateTime                  @default(now())
+  voc_issues                                                                   voc_issues[]
+  voc_sla_config                                                               voc_sla_config[]
+  voc_request_types                                                            voc_request_types         @relation(fields: [request_type_id], references: [id])
+  voc_type_change_request_voc_type_change_request_current_topic_idTovoc_topics voc_type_change_request[] @relation("voc_type_change_request_current_topic_idTovoc_topics")
+  voc_type_change_request_voc_type_change_request_new_topic_idTovoc_topics     voc_type_change_request[] @relation("voc_type_change_request_new_topic_idTovoc_topics")
+  voc_types                                                                    voc_types[]
+
+  @@index([code])
+  @@index([is_active])
+  @@index([request_type_id])
+  @@index([sort_order])
+}
+
+model voc_tracking {
+  id                                 String    @id(map: "voc_tracking_pkey2") @db.Uuid
+  voc_master_id                      String    @db.Uuid
+  status                             String
+  detail                             String
+  created_at                         DateTime  @default(now())
+  updated_at                         DateTime  @default(now())
+  created_by                         String
+  cancel_reason                      String?   @db.Uuid
+  additional_cause                   String?
+  estimated_completion_date          DateTime?
+  root_cause                         String?   @db.Uuid
+  customer_comment                   String?
+  customer_other_rating              Int?
+  customer_overall_rating            Int?
+  customer_product_rating            Int?
+  customer_reject_reason             String?
+  customer_satisfaction_decision     String?   @db.VarChar(50)
+  customer_satisfaction_submitted_at DateTime?
+  customer_satisfaction_submitted_by String?
+  customer_service_rating            Int?
+  is_unfounded                       Boolean?
+  is_random_audit                    Boolean?
+  reviewed_reason                    String?
+  forwarded_to                       String?   @db.VarChar
+  forwarded_from                     String?   @db.VarChar
+
+  @@index([created_at], map: "voc_tracking_created_at_idx2")
+  @@index([created_by], map: "voc_tracking_created_by_idx2")
+  @@index([root_cause], map: "voc_tracking_root_cause_idx2")
+  @@index([status], map: "voc_tracking_status_idx2")
+  @@index([voc_master_id], map: "voc_tracking_voc_master_id_idx2")
+}
+
+model voc_type_change_request {
+  id                                                                                   String             @id @db.Uuid
+  voc_master_id                                                                        String             @db.Uuid
+  current_request_type_id                                                              String?            @db.Uuid
+  current_topic_id                                                                     String?            @db.Uuid
+  current_issue_id                                                                     String?            @db.Uuid
+  new_request_type_id                                                                  String             @db.Uuid
+  new_topic_id                                                                         String             @db.Uuid
+  new_issue_id                                                                         String?            @db.Uuid
+  description                                                                          String
+  status                                                                               String             @default("PENDING_APPROVAL")
+  created_by                                                                           String
+  created_at                                                                           DateTime           @default(now())
+  updated_at                                                                           DateTime           @default(now())
+  approved_by                                                                          String?
+  approved_at                                                                          DateTime?
+  rejected_at                                                                          DateTime?
+  rejected_by                                                                          String?
+  current_sub_issue_id                                                                 String?            @db.Uuid
+  new_sub_issue_id                                                                     String?            @db.Uuid
+  voc_issues_voc_type_change_request_current_issue_idTovoc_issues                      voc_issues?        @relation("voc_type_change_request_current_issue_idTovoc_issues", fields: [current_issue_id], references: [id])
+  voc_request_types_voc_type_change_request_current_request_type_idTovoc_request_types voc_request_types? @relation("voc_type_change_request_current_request_type_idTovoc_request_types", fields: [current_request_type_id], references: [id])
+  voc_sub_issues_voc_type_change_request_current_sub_issue_idTovoc_sub_issues          voc_sub_issues?    @relation("voc_type_change_request_current_sub_issue_idTovoc_sub_issues", fields: [current_sub_issue_id], references: [id])
+  voc_topics_voc_type_change_request_current_topic_idTovoc_topics                      voc_topics?        @relation("voc_type_change_request_current_topic_idTovoc_topics", fields: [current_topic_id], references: [id])
+  voc_issues_voc_type_change_request_new_issue_idTovoc_issues                          voc_issues?        @relation("voc_type_change_request_new_issue_idTovoc_issues", fields: [new_issue_id], references: [id], onDelete: Restrict)
+  voc_request_types_voc_type_change_request_new_request_type_idTovoc_request_types     voc_request_types  @relation("voc_type_change_request_new_request_type_idTovoc_request_types", fields: [new_request_type_id], references: [id])
+  voc_sub_issues_voc_type_change_request_new_sub_issue_idTovoc_sub_issues              voc_sub_issues?    @relation("voc_type_change_request_new_sub_issue_idTovoc_sub_issues", fields: [new_sub_issue_id], references: [id], onDelete: Restrict)
+  voc_topics_voc_type_change_request_new_topic_idTovoc_topics                          voc_topics         @relation("voc_type_change_request_new_topic_idTovoc_topics", fields: [new_topic_id], references: [id])
+  voc_master                                                                           voc_master         @relation(fields: [voc_master_id], references: [id], onDelete: Cascade)
+
+  @@index([created_at])
+  @@index([status])
+  @@index([voc_master_id])
+}
+
+model voc_types {
+  id                  String             @id @db.Uuid
+  code                String             @unique
+  name                String
+  voc_request_type_id String?            @db.Uuid
+  voc_topic_id        String?            @db.Uuid
+  voc_issue_id        String?            @db.Uuid
+  voc_sub_issue_id    String?            @db.Uuid
+  voc_cause_id        String?            @db.Uuid
+  sort_order          Int                @default(0)
+  is_active           Boolean            @default(true)
+  is_selectable       Boolean            @default(true)
+  is_reportable       Boolean            @default(true)
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @default(now())
+  voc_causes          voc_causes?        @relation(fields: [voc_cause_id], references: [id])
+  voc_issues          voc_issues?        @relation(fields: [voc_issue_id], references: [id])
+  voc_request_types   voc_request_types? @relation(fields: [voc_request_type_id], references: [id])
+  voc_sub_issues      voc_sub_issues?    @relation(fields: [voc_sub_issue_id], references: [id])
+  voc_topics          voc_topics?        @relation(fields: [voc_topic_id], references: [id])
+
+  @@index([code])
+  @@index([is_active])
+  @@index([is_reportable])
+  @@index([is_selectable])
+  @@index([sort_order])
+  @@index([voc_cause_id])
+  @@index([voc_issue_id])
+  @@index([voc_request_type_id])
+  @@index([voc_sub_issue_id])
+  @@index([voc_topic_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model voc_wbs_data {
+  id                        String    @id @db.Uuid
+  voc_master_id             String    @unique(map: "unique_voc_master_id") @db.Uuid
+  wbs_no                    String?   @db.VarChar(50)
+  estimated_completion_date DateTime?
+  plan_description          String?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @default(now())
+  enabled_wbs               Boolean?
+  estatus                   String?   @db.VarChar(50)
+  estatus_txt               String?   @db.VarChar(500)
+  status                    String?
 }
