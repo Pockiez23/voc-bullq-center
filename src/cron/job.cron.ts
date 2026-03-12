@@ -15,7 +15,7 @@ export type Voc1129Status =
 export const startCron = () => {
   console.log("⏰ Cronjob Service Started...");
   const voc1129IntervalMinutes = Number(
-    process.env.VOC_1129_CRON_INTERVAL_MINUTES ?? "30"
+    process.env.VOC_1129_CRON_INTERVAL_MINUTES ?? "1"
   );
   const voc1129CronExpr = `*/${voc1129IntervalMinutes} * * * *`;
   console.log(

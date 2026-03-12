@@ -1,72 +1,96 @@
 import { Worker } from "bullmq";
-import { connection } from "./queue/job.queue";
+import { connection } from "./queue/job.queue"; // หรือ "./queue/voc.queue" ถ้าแยกไฟล์ connection ไว้
 import { prisma } from "./lib/prisma";
-import { JobStatus } from "@prisma/client";
+//import { Prisma } from "@prisma/client";
 
-// ⚠️ อย่าลืมแก้ URL ให้ตรงกับปัจจุบันของ Webhook.site ของคุณนะครับ
-const WEBHOOK_URL = "https://webhook.site/b45899da-8252-47ff-bb0a-b2f65ff66e85"; 
+// ✅ โหลด Endpoint จาก ENV (ถ้าไม่มีให้ใช้ Webhook.site สำหรับ Dev)
+const WEBHOOK_URL = process.env.SOAP_ENDPOINT || "https://webhook.site/b45899da-8252-47ff-bb0a-b2f65ff66e85"; 
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
-let processingJobId: number | null = null;
-const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): ทำงาน 5 นาที / 1 งาน
+let processingJobId: string | null = null;
+const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน (ถ้าต้องการให้รันไวตอนเทส ปรับเป็น 1000 ได้ครับ)
+
+// กำหนด Status ตามที่ Database ใหม่ใช้
+const VOC_1129_STATUS = {
+  ERROR: "ERROR",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETE: "COMPLETE",
+} as const;
 
 export const startWorker = () => {
-  console.log("👷 Worker Service Started (SOAP Mode). Waiting for jobs...");
+  console.log(`👷 Worker Service Started (SOAP Mode). Endpoint: ${WEBHOOK_URL}`);
 
+  // ⚠️ ชื่อคิวต้องตรงกับที่ export ใน voc.queue.ts (ในที่นี้สมมติว่าเป็น "voc-queue" หรือ "job-queue")
   const worker = new Worker(
-    "job-queue",
+    "voc-queue", // <-- แก้ชื่อคิวตรงนี้ให้ตรงกับที่ตั้งไว้ใน src/queue/voc.queue.ts 
     async (job) => {
       const jobStartedAt = Date.now();
-      // 1. แปลง ID ให้ชัวร์ (รองรับทั้ง id และ jobId กันพลาด)
-      const rawId = job.data.id || job.data.jobId;
-      const jobId = Number(rawId);
+      
+      // รับค่าที่ส่งมาจาก cron
+      const vocMasterId = job.data.vocMasterId;
+      const vocNo = job.data.vocNo;
 
-      if (!jobId || isNaN(jobId)) {
-        console.error(`❌ [WORKER] Invalid Job ID: ${rawId}`);
+      if (!vocMasterId) {
+        console.error(`❌ [WORKER] Invalid Job Data: Missing vocMasterId`);
         return;
       }
 
-      // 2. เช็คงานใน DB ว่ามีอยู่จริงไหม (กันงานผี Ghost Job)
-      const existingJob = await prisma.job.findUnique({
-        where: { id: jobId }
+      // 1. เช็คงานใน DB ว่ามีอยู่จริงไหม
+      const existingJob = await prisma.voc_master.findUnique({
+        where: { id: vocMasterId }
       });
 
       if (!existingJob) {
-        console.warn(`👻 [WORKER] Job ID ${jobId} not found in DB. Skipping...`);
-        return;
-      }
-
-      // 3. เช็คสถานะ (กันทำซ้ำ Duplicate)
-      if (existingJob.status === JobStatus.COMPLETED || existingJob.status === JobStatus.FAILED) {
-        console.log(`⏭️ [WORKER] Job ${jobId} is already ${existingJob.status}. Skipping duplicate...`);
+        console.warn(`👻 [WORKER] VOC ID ${vocMasterId} not found in DB. Skipping...`);
         return;
       }
 
       // เริ่มงานจริง
-      processingJobId = jobId; 
-      console.log(`📥 [WORKER] Received Job ID: ${jobId} (Processing...)`);
+      processingJobId = vocMasterId; 
+      console.log(`📥 [WORKER] Received VOC: ${vocNo} (Processing...)`);
 
       try {
-        // หน่วงเวลาจำลองการทำงาน (ปรับเลขได้ตามใจชอบครับ หน่วยเป็น ms)
-        console.log(`⏳ [WORKER] Job ${jobId} is working...`);
-        await new Promise((resolve) => setTimeout(resolve, 3000)); 
+        // 2. Query ดึงข้อมูลจริงจาก DB ตาม SQL Script ของพี่ๆ 
+        const queryResult = await prisma.$queryRaw<any[]>(Prisma.sql`
+          SELECT vm.voc_no,
+                 vm2.cc_code,
+                 CONCAT_WS(' > ', vm2.request_type_name, vm2.topic_name, vm2.issue_name, vm2.sub_issue_name) AS desc,
+                 vm.status,
+                 vs.cc_maping,
+                 vt.detail,
+                 vt.created_at
+          FROM public.voc_master AS vm
+          LEFT JOIN public.voc_detail AS vd ON vm.id = vd.voc_master_id 
+          LEFT JOIN public.voc_mapping AS vm2 ON vm.request_type = vm2.request_type_id AND vm.topic = vm2.topic_id AND vm.issue = vm2.issue_id AND vm.sub_issue = vm2.sub_issue_id 
+          LEFT JOIN public.voc_status AS vs ON vs.status_en = vm.status  
+          LEFT JOIN (
+              SELECT DISTINCT ON (voc_master_id) voc_master_id, detail, created_at
+              FROM public.voc_tracking 
+              ORDER BY voc_master_id, created_at DESC
+          ) vt ON vt.voc_master_id = vm.id
+          WHERE vm.id = ${vocMasterId};
+        `);
 
-        // ✅ 4. สร้าง XML Body (SOAP Envelope)
+        if (queryResult.length === 0) throw new Error("Data not found in view query");
+        const payloadData = queryResult[0];
+
+        // 3. สร้าง XML Body (SOAP Envelope) จากข้อมูลจริงที่ดึงมา
         const xmlBody = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
-    <ProcessJobRequest xmlns="http://tempuri.org/">
-      <JobId>${jobId}</JobId>
-      <Name>${job.data.name || 'Unknown'}</Name>
-      <Timestamp>${new Date().toISOString()}</Timestamp>
-      <Status>Processed</Status>
-    </ProcessJobRequest>
+    <VocData>
+      <VocNo>${payloadData.voc_no || ''}</VocNo>
+      <CcCode>${payloadData.cc_code || ''}</CcCode>
+      <Description>${payloadData.desc || ''}</Description>
+      <Status>${payloadData.status || ''}</Status>
+      <TrackingDetail>${payloadData.detail || ''}</TrackingDetail>
+    </VocData>
   </soap:Body>
 </soap:Envelope>`;
 
-        // ✅ 5. ยิงแบบ SOAP (เปลี่ยน Content-Type เป็น text/xml)
-        console.log(`🚀 [WORKER] Sending SOAP Request to ${WEBHOOK_URL}`);
+        console.log(`🚀 [WORKER] Sending SOAP Request for ${vocNo}...`);
         
+        // 4. ยิงแบบ SOAP 
         const response = await fetch(WEBHOOK_URL, {
             method: "POST",
             headers: { 
@@ -79,41 +103,40 @@ export const startWorker = () => {
             throw new Error(`SOAP request failed with status ${response.status}`);
         }
 
+        // --- รอ Rate Limit (5 นาที) ---
         const remainingMs = MIN_JOB_DURATION_MS - (Date.now() - jobStartedAt);
         if (remainingMs > 0) {
-          console.log(
-            `🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(
-              remainingMs / 1000
-            )}s before completing Job ${jobId}...`
-          );
+          console.log(`🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(remainingMs / 1000)}s before completing...`);
           await new Promise((resolve) => setTimeout(resolve, remainingMs));
         }
 
-        // จบงาน Update DB เป็น COMPLETED
-        await prisma.job.update({
-          where: { id: jobId },
-          data: { status: JobStatus.COMPLETED, is_run: false }
+        // ✅ 5. จบงาน Update DB เป็น COMPLETE พร้อม stamp วันเวลา
+        await prisma.voc_master.update({
+          where: { id: vocMasterId },
+          data: { 
+            cronjob_1129_last_run_status: VOC_1129_STATUS.COMPLETE, 
+            cronjob_1129_last_run_date: new Date() 
+          }
         });
-        console.log(`✅ [WORKER] Job ${jobId} Completed (SOAP Sent)`);
+        console.log(`✅ [WORKER] VOC ${vocNo} Completed (SOAP Sent)`);
 
       } catch (error) {
-        console.error(`❌ [WORKER] Job ${jobId} Failed:`, error);
+        console.error(`❌ [WORKER] VOC ${vocNo} Failed:`, error);
         
-        // Update DB เป็น FAILED (ใส่ try-catch กันเหนียวเผื่อ DB หลุด)
         try {
             const remainingMs = MIN_JOB_DURATION_MS - (Date.now() - jobStartedAt);
             if (remainingMs > 0) {
-              console.log(
-                `🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(
-                  remainingMs / 1000
-                )}s before failing Job ${jobId}...`
-              );
+              console.log(`🕒 [WORKER] Enforcing rate limit: waiting ${Math.ceil(remainingMs / 1000)}s before failing...`);
               await new Promise((resolve) => setTimeout(resolve, remainingMs));
             }
 
-            await prisma.job.update({
-                where: { id: jobId }, 
-                data: { status: JobStatus.FAILED, is_run: false }
+            // ❌ 6. พัง Update DB เป็น ERROR พร้อม stamp วันเวลา
+            await prisma.voc_master.update({
+                where: { id: vocMasterId }, 
+                data: { 
+                  cronjob_1129_last_run_status: VOC_1129_STATUS.ERROR, 
+                  cronjob_1129_last_run_date: new Date() 
+                }
             });
         } catch (dbError) {
              console.error("⚠️ Failed to update error status to DB");
@@ -121,8 +144,7 @@ export const startWorker = () => {
         
         throw error;
       } finally {
-        // ล้างค่า ID เมื่อจบงาน (เพื่อให้รู้ว่าตอนนี้ว่างแล้ว)
-        processingJobId = null;
+        processingJobId = null; // คืนค่าตัวแปร
       }
     },
     { 
@@ -135,15 +157,18 @@ export const startWorker = () => {
     console.error(`Job ${job?.id} failed globally with error ${err.message}`);
   });
 
-  // Graceful Shutdown: ดักจับการกด Ctrl+C
+  // 🛡️ Graceful Shutdown: ดักจับการกด Ctrl+C
   const gracefulShutdown = async () => {
     if (processingJobId) {
-      console.log(`\n⚠️ Worker stopping! Resetting Job ${processingJobId} back to PENDING...`);
+      console.log(`\n⚠️ Worker stopping! Resetting VOC ${processingJobId} back to ERROR...`);
       try {
-        // รีเซ็ตงานที่ค้างมือกลับเป็น PENDING
-        await prisma.job.update({
+        // ถ้าระบบโดนปิดกลางคัน ให้เซ็ตสถานะเป็น ERROR ไปเลย เพื่อให้ Cron ลูบหน้ากวาดไปทำใหม่
+        await prisma.voc_master.update({
           where: { id: processingJobId },
-          data: { status: JobStatus.PENDING, is_run: false }
+          data: { 
+            cronjob_1129_last_run_status: VOC_1129_STATUS.ERROR,
+            cronjob_1129_last_run_date: new Date()
+          }
         });
         console.log("✅ Reset complete.");
       } catch (err) {
