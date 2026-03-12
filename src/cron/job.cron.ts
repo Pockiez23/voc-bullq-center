@@ -34,7 +34,7 @@ export const startCron = () => {
         id: string;
         voc_no: string;
       };
-
+      
       const candidates = await prisma.$queryRaw<VocToQueue[]>(Prisma.sql`
         SELECT id, voc_no
         FROM public.voc_master
@@ -46,7 +46,9 @@ export const startCron = () => {
               VOC_1129_STATUS.ERROR,
               VOC_1129_STATUS.IN_PROGRESS,
             ])})
-          );
+          )
+        ORDER BY updated_at ASC -- เพิ่ม ORDER BY ให้ดึงงานที่อัปเดตเก่าที่สุดมาก่อน (First in, First out)
+        LIMIT 5; -- เพิ่ม LIMIT 5 เพื่อนำเข้าคิวรอบละ 5 งาน
       `);
 
       if (candidates.length === 0) {

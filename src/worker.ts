@@ -1,14 +1,15 @@
 import { Worker } from "bullmq";
 import { connection } from "./queue/job.queue"; // หรือ "./queue/voc.queue" ถ้าแยกไฟล์ connection ไว้
 import { prisma } from "./lib/prisma";
-//import { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // ✅ โหลด Endpoint จาก ENV (ถ้าไม่มีให้ใช้ Webhook.site สำหรับ Dev)
-const WEBHOOK_URL = process.env.SOAP_ENDPOINT || "https://webhook.site/b45899da-8252-47ff-bb0a-b2f65ff66e85"; 
+const WEBHOOK_URL = process.env.SOAP_ENDPOINT || "https://webhook.site/ff104323-59f6-46d2-a59b-add4bda8f36b"; 
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: string | null = null;
-const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน (ถ้าต้องการให้รันไวตอนเทส ปรับเป็น 1000 ได้ครับ)
+//const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน (ถ้าต้องการให้รันไวตอนเทส ปรับเป็น 1000 ได้ครับ)
+const MIN_JOB_DURATION_MS = 10000;
 
 // กำหนด Status ตามที่ Database ใหม่ใช้
 const VOC_1129_STATUS = {
@@ -22,7 +23,7 @@ export const startWorker = () => {
 
   // ⚠️ ชื่อคิวต้องตรงกับที่ export ใน voc.queue.ts (ในที่นี้สมมติว่าเป็น "voc-queue" หรือ "job-queue")
   const worker = new Worker(
-    "voc-queue", // <-- แก้ชื่อคิวตรงนี้ให้ตรงกับที่ตั้งไว้ใน src/queue/voc.queue.ts 
+    "voc-1129-queue", // <-- แก้ชื่อคิวตรงนี้ให้ตรงกับที่ตั้งไว้ใน src/queue/voc.queue.ts 
     async (job) => {
       const jobStartedAt = Date.now();
       
@@ -45,12 +46,17 @@ export const startWorker = () => {
         return;
       }
 
+      if (existingJob.cronjob_1129_last_run_status !== VOC_1129_STATUS.IN_PROGRESS) {
+        console.warn(`✋ [WORKER] Skip work VOC ${vocNo} Center not order (Status DB is: ${existingJob.cronjob_1129_last_run_status})`);
+        return;
+      }
+
       // เริ่มงานจริง
       processingJobId = vocMasterId; 
       console.log(`📥 [WORKER] Received VOC: ${vocNo} (Processing...)`);
 
       try {
-        // 2. Query ดึงข้อมูลจริงจาก DB ตาม SQL Script ของพี่ๆ 
+        // Query ดึงข้อมูลจริงจาก DB ตาม SQL Script 
         const queryResult = await prisma.$queryRaw<any[]>(Prisma.sql`
           SELECT vm.voc_no,
                  vm2.cc_code,
@@ -68,13 +74,13 @@ export const startWorker = () => {
               FROM public.voc_tracking 
               ORDER BY voc_master_id, created_at DESC
           ) vt ON vt.voc_master_id = vm.id
-          WHERE vm.id = ${vocMasterId};
+          WHERE vm.id = ${vocMasterId}::uuid;
         `);
 
         if (queryResult.length === 0) throw new Error("Data not found in view query");
         const payloadData = queryResult[0];
 
-        // 3. สร้าง XML Body (SOAP Envelope) จากข้อมูลจริงที่ดึงมา
+        // สร้าง XML Body (SOAP Envelope) จากข้อมูลจริงที่ดึงมา
         const xmlBody = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
@@ -90,7 +96,7 @@ export const startWorker = () => {
 
         console.log(`🚀 [WORKER] Sending SOAP Request for ${vocNo}...`);
         
-        // 4. ยิงแบบ SOAP 
+        // ยิงแบบ SOAP 
         const response = await fetch(WEBHOOK_URL, {
             method: "POST",
             headers: { 
@@ -110,7 +116,7 @@ export const startWorker = () => {
           await new Promise((resolve) => setTimeout(resolve, remainingMs));
         }
 
-        // ✅ 5. จบงาน Update DB เป็น COMPLETE พร้อม stamp วันเวลา
+        // จบงาน Update DB เป็น COMPLETE พร้อม stamp วันเวลา
         await prisma.voc_master.update({
           where: { id: vocMasterId },
           data: { 
@@ -139,7 +145,7 @@ export const startWorker = () => {
                 }
             });
         } catch (dbError) {
-             console.error("⚠️ Failed to update error status to DB");
+             console.error("⚠️ Failed to update error status 555 to DB");
         }
         
         throw error;
@@ -166,8 +172,8 @@ export const startWorker = () => {
         await prisma.voc_master.update({
           where: { id: processingJobId },
           data: { 
-            cronjob_1129_last_run_status: VOC_1129_STATUS.ERROR,
-            cronjob_1129_last_run_date: new Date()
+            cronjob_1129_last_run_status: null,
+            cronjob_1129_last_run_date: null,
           }
         });
         console.log("✅ Reset complete.");
