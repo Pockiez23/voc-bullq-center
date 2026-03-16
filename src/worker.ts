@@ -13,8 +13,8 @@ if (!WEBHOOK_URL) {
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: string | null = null;
-//const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน 
-const MIN_JOB_DURATION_MS = 15 * 1000;//test ระบบรันไวๆ 
+const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน 
+//const MIN_JOB_DURATION_MS = 5 * 1000;//test ระบบรันไวๆ 
 
 // กำหนด Status ตามที่ Database ใหม่ใช้
 const VOC_1129_STATUS = {
