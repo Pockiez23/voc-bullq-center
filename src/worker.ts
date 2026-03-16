@@ -8,8 +8,8 @@ const WEBHOOK_URL = process.env.SOAP_ENDPOINT || "https://webhook.site/ff104323-
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: string | null = null;
-//const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน (ถ้าต้องการให้รันไวตอนเทส ปรับเป็น 1000 ได้ครับ)
-const MIN_JOB_DURATION_MS = 10000;
+const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน 
+//const MIN_JOB_DURATION_MS = 10000;//test ระบบรันไวๆ
 
 // กำหนด Status ตามที่ Database ใหม่ใช้
 const VOC_1129_STATUS = {
@@ -21,9 +21,8 @@ const VOC_1129_STATUS = {
 export const startWorker = () => {
   console.log(`👷 Worker Service Started (SOAP Mode). Endpoint: ${WEBHOOK_URL}`);
 
-  // ⚠️ ชื่อคิวต้องตรงกับที่ export ใน voc.queue.ts (ในที่นี้สมมติว่าเป็น "voc-queue" หรือ "job-queue")
   const worker = new Worker(
-    "voc-1129-queue", // <-- แก้ชื่อคิวตรงนี้ให้ตรงกับที่ตั้งไว้ใน src/queue/voc.queue.ts 
+    "voc-1129-queue", 
     async (job) => {
       const jobStartedAt = Date.now();
       
@@ -168,7 +167,7 @@ export const startWorker = () => {
     if (processingJobId) {
       console.log(`\n⚠️ Worker stopping! Resetting VOC ${processingJobId} back to ERROR...`);
       try {
-        // ถ้าระบบโดนปิดกลางคัน ให้เซ็ตสถานะเป็น ERROR ไปเลย เพื่อให้ Cron ลูบหน้ากวาดไปทำใหม่
+        // ถ้าระบบโดนปิดกลางคัน ให้เซ็ตสถานะเป็น null
         await prisma.voc_master.update({
           where: { id: processingJobId },
           data: { 
