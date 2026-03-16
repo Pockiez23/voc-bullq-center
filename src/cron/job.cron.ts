@@ -49,8 +49,8 @@ export const startCron = () => {
             ])})
             OR (cronjob_1129_last_run_status = ${VOC_1129_STATUS.IN_PROGRESS} AND cronjob_1129_last_run_date < NOW() - INTERVAL '1 hour')
           )
-        ORDER BY updated_at ASC -- เพิ่ม ORDER BY ให้ดึงงานที่อัปเดตเก่าที่สุดมาก่อน (First in, First out)
-        LIMIT 10; -- เพิ่ม LIMIT 10 เพื่อนำเข้าคิวรอบละ  งาน
+          ORDER BY updated_at ASC, voc_no ASC -- เพิ่ม ORDER BY ให้ดึงงานที่อัปเดตเก่าที่สุดมาก่อน (First in, First out)
+        LIMIT 10; -- เพิ่ม LIMIT 10 เพื่อนำเข้าคิวรอบละงาน
       `);
 
       if (candidates.length === 0) {

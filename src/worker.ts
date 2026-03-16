@@ -3,13 +3,18 @@ import { connection } from "./queue/job.queue"; // หรือ "./queue/voc.que
 import { prisma } from "./lib/prisma";
 import { Prisma } from "@prisma/client";
 
-// ✅ โหลด Endpoint จาก ENV (ถ้าไม่มีให้ใช้ Webhook.site สำหรับ Dev)
-const WEBHOOK_URL = process.env.SOAP_ENDPOINT || "https://webhook.site/ff104323-59f6-46d2-a59b-add4bda8f36b"; 
+// โหลด Endpoint จาก ENV แบบบังคับ (ถ้าไม่ใส่มาให้พังไปเลย จะได้รู้ตัว)
+const WEBHOOK_URL = process.env.SOAP_ENDPOINT; 
+
+if (!WEBHOOK_URL) {
+  console.error("❌ [FATAL ERROR] not found setting SOAP_ENDPOINT in .env file");
+  process.exit(1); 
+}
 
 // ตัวแปรจำ ID งานที่กำลังทำอยู่ (เอาไว้คืนค่าตอนโดนปิดกะทันหัน)
 let processingJobId: string | null = null;
-const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน 
-//const MIN_JOB_DURATION_MS = 10000;//test ระบบรันไวๆ
+//const MIN_JOB_DURATION_MS = 5 * 60 * 1000; // Worker (Execution): หน่วงเวลา 5 นาที / 1 งาน 
+const MIN_JOB_DURATION_MS = 15 * 1000;//test ระบบรันไวๆ 
 
 // กำหนด Status ตามที่ Database ใหม่ใช้
 const VOC_1129_STATUS = {
