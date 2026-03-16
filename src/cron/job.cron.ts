@@ -41,16 +41,15 @@ export const startCron = () => {
         WHERE voc_no LIKE 'C%'
           AND (
             cronjob_1129_last_run_date IS NULL
-            OR cronjob_1129_last_run_date < updated_at
+            OR cronjob_1129_last_run_date < (updated_at - INTERVAL '2 seconds')
             OR cronjob_1129_last_run_status IN (${Prisma.join([
               VOC_1129_STATUS.ERROR,
               VOC_1129_STATUS.IN_PROGRESS,
-              VOC_1129_STATUS.COMPLETE,         
+              VOC_1129_STATUS.COMPLETE,          
             ])})
-            OR (cronjob_1129_last_run_status = ${VOC_1129_STATUS.IN_PROGRESS} AND cronjob_1129_last_run_date < NOW() - INTERVAL '1 hour')
           )
           ORDER BY updated_at ASC, voc_no ASC -- เพิ่ม ORDER BY ให้ดึงงานที่อัปเดตเก่าที่สุดมาก่อน (First in, First out)
-        LIMIT 10; -- เพิ่ม LIMIT 10 เพื่อนำเข้าคิวรอบละงาน
+          LIMIT ${Number(process.env.BATCH_SIZE)};
       `);
 
       if (candidates.length === 0) {
